@@ -9,7 +9,6 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
 
-
 <style>
 :root{
   --ink:#0f172a;--ink-mid:#1e293b;--ink-muted:#64748b;
@@ -342,7 +341,7 @@ header{background:linear-gradient(90deg,#1e3a5f,#2d5986);color:#fff;padding:12px
 
 /* MAP overlays */
 .map-legend{background:rgba(255,255,255,.96);border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:10px;box-shadow:0 4px 16px rgba(15,23,42,.12)}
-#map-metric-label{position:absolute;top:10px;left:50%;transform:translateX(-50%);z-index:900;background:rgba(255,255,255,.96);color:#1e3a5f;font-size:11px;font-weight:600;letter-spacing:.3px;padding:6px 11px 5px;border-radius:7px;border:1px solid #2d5986;box-shadow:0 2px 10px rgba(15,23,42,.15);pointer-events:none;max-width:280px;text-align:center;line-height:1.3;display:none;backdrop-filter:blur(4px);white-space:nowrap;}
+#map-metric-label{position:absolute;top:48px;right:10px;bottom:auto;left:auto;transform:none;z-index:900;background:rgba(255,255,255,.96);color:#1e3a5f;font-size:11px;font-weight:600;letter-spacing:.3px;padding:6px 11px 5px;border-radius:7px;border:1px solid #2d5986;box-shadow:0 2px 10px rgba(15,23,42,.15);pointer-events:none;max-width:280px;text-align:center;line-height:1.3;display:none;backdrop-filter:blur(4px);white-space:nowrap;}
 #map-metric-label .hml-tag{display:block;font-size:8px;font-weight:400;letter-spacing:.8px;text-transform:uppercase;color:#64748b;margin-bottom:2px}
 .map-legend h4{font-size:8.5px;text-transform:uppercase;letter-spacing:.8px;color:var(--ink-muted);margin-bottom:4px;padding-bottom:3px;border-bottom:1px solid var(--border)}
 .lg-row{display:flex;align-items:center;gap:5px;line-height:1.75}
@@ -366,6 +365,10 @@ button,label{font-family:var(--font-b);letter-spacing:.1px}
 
 /* Map legend label fix */
 /* ── Data-source tooltips ── */
+#map-stat-overlay{position:absolute;top:10px;left:52px;display:flex;gap:8px;z-index:1000;pointer-events:none;}
+.map-stat-box{background:rgba(15,30,46,0.82);backdrop-filter:blur(4px);border:1px solid rgba(255,255,255,.15);border-radius:7px;padding:5px 12px;text-align:center;min-width:85px;}
+.map-stat-lbl{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#94a3b8;margin-bottom:2px;}
+.map-stat-val{font-size:12px;font-weight:800;color:#fff;letter-spacing:.3px;}
 #ds-tooltip{
   position:fixed;z-index:9999;pointer-events:none;
   background:#1e3a5f;color:#f1f5f9;
@@ -428,6 +431,11 @@ button,label{font-family:var(--font-b);letter-spacing:.1px}
   <div id="map">
     <button id="show-table-btn">▶ Show Table</button>
     <button id="show-trend-btn" onclick="openTrendDrawer()">📈 Trend Panel</button>
+    <div id="map-stat-overlay">
+      <div class="map-stat-box"><div class="map-stat-lbl">Total Screening</div><div class="map-stat-val" id="mso-screening">—</div></div>
+      <div class="map-stat-box"><div class="map-stat-lbl">Diseased</div><div class="map-stat-val" id="mso-diseased">—</div></div>
+      <div class="map-stat-box"><div class="map-stat-lbl">On HU</div><div class="map-stat-val" id="mso-hu">—</div></div>
+    </div>
     <div id="map-metric-label"><span class="hml-tag">Colouring map by</span><span id="map-metric-label-text"></span></div>
   </div>
 
@@ -806,6 +814,7 @@ function makeDS(dataMap){
     return{
       label:dist,
       data:dataMap[dist],
+      datalabels:isMP?{display:true,align:'top',anchor:'end',color:'#0f1e2e',font:{size:8,weight:'700'},formatter:v=>v==null?'':v>=10000?(v/1000).toFixed(0)+'k':v>=1000?(v/1000).toFixed(1)+'k':String(v),padding:{bottom:2}}:{display:false},
       borderColor:col,
       backgroundColor:col+'22',
       borderWidth:isMP?2.8:1.8,
@@ -857,7 +866,7 @@ function makeTrendOpts(){
 
 // ── Init / refresh charts ───────────────────
 function initTrendCharts(){
-  if(typeof Chart==='undefined'){setTimeout(initTrendCharts,300);return;}
+  if(typeof Chart==='undefined'||typeof ChartDataLabels==='undefined'){setTimeout(initTrendCharts,300);return;}
   if(!TREND_DISTRICTS.length){showTrendPH();return;}
   hideTrendPH();
   const{sd,dd}=buildTrendDatasets();
@@ -998,7 +1007,7 @@ function onTrainedDataLoaded(wb){
   if(window.Chart){showTrendPH();return;}
   const s=document.createElement('script');
   s.src='https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js';
-  s.onload=()=>showTrendPH();
+  s.onload=()=>{const s2=document.createElement('script');s2.src='https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js';s2.onload=()=>{Chart.register(ChartDataLabels);showTrendPH();};s2.onerror=()=>showTrendPH();document.head.appendChild(s2);};
   s.onerror=()=>console.error('Chart.js failed to load');
   document.head.appendChild(s);
 })();
@@ -1040,65 +1049,39 @@ function normalizeName(n){if(!n)return"";return n.trim().toUpperCase().replace(/
 /* ═══════════════════════════════════════════
    EXCEL LOADER
    ═══════════════════════════════════════════ */
-// Auto-fetch from Google Sheets via Apps Script
-const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzbONMCTBxdWkJpJziu3P4T48AJ3xrWTxRZm6_Pzm8axAYSng0U1-NHTAdbacwblW5hGA/exec";
-
+const APPS_SCRIPT_URL="https://script.google.com/macros/s/AKfycbzbONMCTBxdWkJpJziu3P4T48AJ3xrWTxRZm6_Pzm8axAYSng0U1-NHTAdbacwblW5hGA/exec";
 function loadFromAppsScript(){
-  const wrap=document.getElementById("load-progress-wrap");
-  const prog=document.getElementById("load-progress");
-  const lbl=document.getElementById("load-pct");
-  const overlay=document.getElementById("load-overlay");
-  const overlayPct=document.getElementById("overlay-pct");
-  function setP(v){
-    prog.style.width=v+"%";
-    lbl.textContent=Math.round(v)+"%";
-    if(overlayPct)overlayPct.textContent=Math.round(v)+"%";
-  }
-  wrap.style.display="block";
-  overlay.classList.add("active");
-  setP(0);
+  const wrap=document.getElementById("load-progress-wrap"),prog=document.getElementById("load-progress"),
+        lbl=document.getElementById("load-pct"),overlay=document.getElementById("load-overlay"),
+        overlayPct=document.getElementById("overlay-pct");
+  function setP(v){prog.style.width=v+"%";lbl.textContent=Math.round(v)+"%";if(overlayPct)overlayPct.textContent=Math.round(v)+"%";}
+  wrap.style.display="block";overlay.classList.add("active");setP(0);
   document.getElementById("load-status").textContent="⏳ Fetching latest data…";
   let pct=5;const timer=setInterval(()=>{pct=Math.min(pct+5,80);setP(pct);},200);
   fetch(APPS_SCRIPT_URL)
-    .then(r=>{
-      if(!r.ok)throw new Error("HTTP "+r.status);
-      return r.text();
-    })
+    .then(r=>{if(!r.ok)throw new Error("HTTP "+r.status);return r.text();})
     .then(base64=>{
       clearInterval(timer);setP(90);
-      const binary=atob(base64);
-      const bytes=new Uint8Array(binary.length);
-      for(let i=0;i<binary.length;i++)bytes[i]=binary.charCodeAt(i);
+      const bin=atob(base64),bytes=new Uint8Array(bin.length);
+      for(let i=0;i<bin.length;i++)bytes[i]=bin.charCodeAt(i);
       const wb=XLSX.read(bytes,{type:"array",cellFormula:false,cellNF:false,cellText:false});
       console.log("Sheets:",wb.SheetNames);
       document.getElementById("load-hint").textContent="Sheets: "+wb.SheetNames.join(" | ");
       const n=parseWorkbook(wb);
-      setP(100);
-      setTimeout(()=>{wrap.style.display="none";setP(0);overlay.classList.remove("active");},700);
+      setP(100);setTimeout(()=>{wrap.style.display="none";setP(0);overlay.classList.remove("active");},700);
       document.getElementById("load-bar").classList.add("loaded");
       document.getElementById("load-status").textContent="✓ Live data — "+n+" districts loaded";
-      if(geojsonLayer)geojsonLayer.setStyle(districtStyle);
-      rebindTooltips();
-      renderTable();
-      initFilterRanges();
-      if(selectedDistricts.size>0){
-        const arr=[...selectedDistricts];
-        const d=DISTRICT_SCORECARD[normalizeName(arr[arr.length-1])];
-        if(d)renderScorecard(arr[arr.length-1],d);
-      }else if(DISTRICT_SCORECARD["MADHYA PRADESH"]){
-        renderScorecard("MADHYA PRADESH",DISTRICT_SCORECARD["MADHYA PRADESH"],true);
-      }
+      if(typeof geojsonLayer!=="undefined"&&geojsonLayer)geojsonLayer.setStyle(districtStyle);
+      if(typeof rebindTooltips==="function")rebindTooltips();
+      if(typeof renderTable==="function")renderTable();
+      if(typeof initFilterRanges==="function")initFilterRanges();
+      if(typeof selectedDistricts!=="undefined"&&selectedDistricts.size>0){const arr=[...selectedDistricts];const d=DISTRICT_SCORECARD[normalizeName(arr[arr.length-1])];if(d)renderScorecard(arr[arr.length-1],d);}
+      else if(typeof DISTRICT_SCORECARD!=="undefined"&&DISTRICT_SCORECARD["MADHYA PRADESH"]){renderScorecard("MADHYA PRADESH",DISTRICT_SCORECARD["MADHYA PRADESH"],true);}
     })
-    .catch(err=>{
-      clearInterval(timer);
-      wrap.style.display="none";overlay.classList.remove("active");
-      document.getElementById("load-status").textContent="❌ Fetch error: "+err.message;
-      console.error("Fetch error:",err);
-    });
+    .catch(err=>{clearInterval(timer);wrap.style.display="none";overlay.classList.remove("active");
+      document.getElementById("load-status").textContent="❌ Fetch error: "+err.message;console.error(err);});
 }
-document.addEventListener("DOMContentLoaded",()=>{
-  setTimeout(loadFromAppsScript, 100);
-});
+document.addEventListener("DOMContentLoaded",()=>{setTimeout(loadFromAppsScript,100);});
 
 function findSheet(wb,keywords){
   // 1. Try keyword match
@@ -1120,16 +1103,11 @@ function isDataRow(v){
   if(v===null||v===undefined||v==="") return false;
   const s=String(v).trim();
   if(!s) return false;
+  // Reject obvious headers and notes
   const su=s.toUpperCase();
   if(su==="DISTRICTS"||su==="DISTRICT") return false;
   if(s.startsWith("Performance")||s.startsWith("NOTE")||s.startsWith("Source")) return false;
   if(s.startsWith("Detailed Report")||s.startsWith("District Performance")) return false;
-  // Reject pure numbers (serial dates like 12482.25, or stray numeric values)
-  if(!isNaN(parseFloat(s))&&isFinite(s)) return false;
-  // Reject formatted dates
-  if(s.match(/^\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}$/)) return false;
-  if(s.length < 2) return false;
-  return true;
   // Reject pure numbers (shouldn't be a district name)
   if(!isNaN(parseFloat(s))&&isFinite(s)) return false;
   // Must be at least 2 chars
@@ -1194,48 +1172,16 @@ function parseWorkbook(wb){
     if(hdrRow<0) console.warn("Detail header not found. First 4 rows:",rows.slice(0,4));
     if(hdrRow>=0){
       console.log("Detail header sample:",rows[hdrRow].slice(0,6));
-      // Log full first data row to find district column
-      const sampleRow=rows[hdrRow+1]||[];
-      console.log("Detail first data row (all cols):",sampleRow.slice(0,10));
-      // Find which column has the district name (first text-only column)
-      let distCol=0;
-      for(let c=0;c<Math.min(sampleRow.length,5);c++){
-        const v=sampleRow[c];
-        if(v!==null&&v!==undefined&&v!==""&&isNaN(parseFloat(String(v)))){distCol=c;break;}
-      }
-      console.log("Auto-detected district column index:",distCol,"value:",sampleRow[distCol]);
-      const dc=distCol; // offset — all data cols are relative to district column
+      console.log("Detail first data row r[1] (district):",rows[hdrRow+1]?.[1],"r[2] (target_u5):",rows[hdrRow+1]?.[2],"r[14] (ll_scd_diag):",rows[hdrRow+1]?.[14]);
       for(let i=hdrRow+1;i<rows.length;i++){
-        const r=rows[i];if(!isDataRow(r[distCol]))continue;
-        const key=normalizeName(String(r[distCol]));
+        if(!window._ddc){const _s=rows[hdrRow+1]||[];let _x=0;for(;_x<Math.min(_s.length,5);_x++){if(_s[_x]!=null&&_s[_x]!==""&&isNaN(parseFloat(String(_s[_x])))){break;}}window._ddc=_x;}
+        const _dc=window._ddc||0;
+        const r=rows[i];if(!isDataRow(r[_dc]))continue;
+        const key=normalizeName(String(r[_dc]));
         if(!newData[key])newData[key]={perf:{},detail:{}};
         newData[key].detail={
-          // LINE LIST Screening
-          target_u5:safeNum(r[dc+1]),actual_u5:safeNum(r[dc+2]),pct_u5:safePctStr(r[dc+3]),
-          target_540:safeNum(r[dc+4]),actual_540:safeNum(r[dc+5]),pct_540:safePctStr(r[dc+6]),
-          target_anc:safeNum(r[dc+7]),actual_anc:safeNum(r[dc+8]),pct_anc:safePctStr(r[dc+9]),
-          screenings_period:safeNum(r[dc+10]),screenings_no_age:safeNum(r[dc+11]),pct_no_age:safePctStr(r[dc+12]),
-          // LINE LIST Disease LL
-          ll_scd_diagnosed:safeNum(r[dc+13]),
-          // LINE LIST Treatment LL
-          ll_scd_initiated_hu:safeNum(r[dc+14]),ll_scd_on_treatment:safeNum(r[dc+15]),
-          ll_pct_initiated_hu:safePctStr(r[dc+16]),ll_pct_on_treatment:safePctStr(r[dc+17]),
-          // AGGREGATE
-          total_screenings:safeNum(r[dc+18]),
-          agg_scd_diagnosed:safeNum(r[dc+19]),agg_scd_initiated_hu:safeNum(r[dc+20]),
-          agg_scd_on_treatment:safeNum(r[dc+21]),
-          agg_pct_initiated_hu:safePctStr(r[dc+22]),agg_pct_on_treatment:safePctStr(r[dc+23]),
-          genetic_cards_dist:safeNum(r[dc+25]),pct_genetic:safePctStr(r[dc+26]),
-          // Unique patients HU/FA/Vacc
-          hu_unique_total:safeNum(r[dc+27]),hu_unique_u5:safeNum(r[dc+28]),hu_unique_non_u5:safeNum(r[dc+29]),
-          fa_unique_total:safeNum(r[dc+30]),fa_unique_u5:safeNum(r[dc+31]),fa_unique_non_u5:safeNum(r[dc+32]),
-          vacc_unique_total:safeNum(r[dc+33]),vacc_unique_u5:safeNum(r[dc+34]),vacc_unique_non_u5:safeNum(r[dc+35]),
-          pct_hu_all:safePctStr(r[dc+36]),pct_fa_all:safePctStr(r[dc+37]),pct_vacc_all:safePctStr(r[dc+38]),
-          // Retained in care
-          retained:safeNum(r[dc+39]),pct_retained:safePctStr(r[dc+40]),
-          // Duplicates
-          duplicates:safeNum(r[dc+41]),pct_duplicates:safePctStr(r[dc+42]),
-          priority:(r[dc+43]===''||r[dc+43]==null)?null:parseInt(r[dc+43])
+          // LINE LIST Screening (col C-N = r[2]-r[13])
+          target_u5:safeNum(r[_dc+1]),actual_u5:safeNum(r[_dc+2]),pct_u5:safePctStr(r[_dc+3]),target_540:safeNum(r[_dc+4]),actual_540:safeNum(r[_dc+5]),pct_540:safePctStr(r[_dc+6]),target_anc:safeNum(r[_dc+7]),actual_anc:safeNum(r[_dc+8]),pct_anc:safePctStr(r[_dc+9]),screenings_period:safeNum(r[_dc+10]),screenings_no_age:safeNum(r[_dc+11]),pct_no_age:safePctStr(r[_dc+12]),ll_scd_diagnosed:safeNum(r[_dc+13]),ll_scd_initiated_hu:safeNum(r[_dc+14]),ll_scd_on_treatment:safeNum(r[_dc+15]),ll_pct_initiated_hu:safePctStr(r[_dc+16]),ll_pct_on_treatment:safePctStr(r[_dc+17]),total_screenings:safeNum(r[_dc+18]),agg_scd_diagnosed:safeNum(r[_dc+19]),agg_scd_initiated_hu:safeNum(r[_dc+20]),agg_scd_on_treatment:safeNum(r[_dc+21]),agg_pct_initiated_hu:safePctStr(r[_dc+22]),agg_pct_on_treatment:safePctStr(r[_dc+23]),genetic_cards_dist:safeNum(r[_dc+25]),pct_genetic:safePctStr(r[_dc+26]),hu_unique_total:safeNum(r[_dc+27]),hu_unique_u5:safeNum(r[_dc+28]),hu_unique_non_u5:safeNum(r[_dc+29]),fa_unique_total:safeNum(r[_dc+30]),fa_unique_u5:safeNum(r[_dc+31]),fa_unique_non_u5:safeNum(r[_dc+32]),vacc_unique_total:safeNum(r[_dc+33]),vacc_unique_u5:safeNum(r[_dc+34]),vacc_unique_non_u5:safeNum(r[_dc+35]),pct_hu_all:safePctStr(r[_dc+36]),pct_fa_all:safePctStr(r[_dc+37]),pct_vacc_all:safePctStr(r[_dc+38]),retained:safeNum(r[_dc+39]),pct_retained:safePctStr(r[_dc+40]),duplicates:safeNum(r[_dc+41]),pct_duplicates:safePctStr(r[_dc+42]),priority:(r[_dc+43]===''||r[_dc+43]==null)?null:parseInt(r[_dc+43])
         };
         detailCount++;
       }
@@ -1754,6 +1700,8 @@ function updateSelectionState(){
 /* ═══════════════════════════════════════════
    SCORECARD RENDERER
    ═══════════════════════════════════════════ */
+
+function updateMapStatOverlay(d){const agg=(d&&d.agg)||{};const f=v=>{if(v==null)return"—";const n=Math.round(v);return n.toLocaleString('en-IN');};const e1=document.getElementById("mso-screening"),e2=document.getElementById("mso-diseased"),e3=document.getElementById("mso-hu");if(e1)e1.textContent=f(agg.total_screening);if(e2)e2.textContent=f(agg.scd_diagnosed);if(e3)e3.textContent=f(agg.on_hu);}
 function renderScorecard(rawName,d,isMp){
   districtScorecardShowing=!isMp; // true when a district (not MP) is shown
   const sc=document.getElementById("scorecard");
@@ -1820,7 +1768,7 @@ function renderScorecard(rawName,d,isMp){
         <div class="kpi-val" style="font-size:13px">${fmt(dt.screenings_period)}</div>
       </div>
       <div class="kpi">
-        <div class="kpi-lbl">Disease Positive</div>
+        <div class="kpi-lbl">Diseased</div>
         <div class="kpi-val" style="font-size:13px">${fmt(dt.ll_scd_diagnosed)}</div>
       </div>
       <div class="kpi">
@@ -1863,7 +1811,7 @@ function renderScorecard(rawName,d,isMp){
         <div class="kpi-val" style="font-size:13px">${fmt(agg.total_screening)}</div>
       </div>
       <div class="kpi">
-        <div class="kpi-lbl">Disease Positive</div>
+        <div class="kpi-lbl">Diseased</div>
         <div class="kpi-val" style="font-size:13px">${fmt(agg.scd_diagnosed)}</div>
       </div>
       <div class="kpi">
@@ -1881,7 +1829,7 @@ function renderScorecard(rawName,d,isMp){
       ${(()=>{
         const diagPct=agg.total_screening>0?parseFloat(((agg.scd_diagnosed||0)/agg.total_screening*100).toFixed(2)):null;
         const diagPctStr=diagPct!==null?diagPct+"%":"—";
-        return card("Disease Positive",diagPctStr,diagPctStr,"",agg.scd_diagnosed!=null?`${fmt(agg.scd_diagnosed)} of ${fmt(agg.total_screening)} screened`:null);
+        return card("Disease Positivity",diagPctStr,diagPctStr,"",agg.scd_diagnosed!=null?`${fmt(agg.scd_diagnosed)} of ${fmt(agg.total_screening)} screened`:null);
       })()}
       ${(()=>{const trtPct=agg.on_treatment!=null&&agg.scd_diagnosed>0?Math.round(agg.on_treatment/agg.scd_diagnosed*100):parsePct(agg.pct_treatment);const trtPctStr=trtPct!==null?trtPct+"%":"—";const trtRaw=agg.on_treatment!=null&&agg.scd_diagnosed!=null?`${fmt(agg.on_treatment)} / ${fmt(agg.scd_diagnosed)}`:null;return card("On Treatment",trtPctStr,trtPctStr,"",trtRaw);})()}
     </div>
@@ -2435,6 +2383,7 @@ const _origRenderScorecard = renderScorecard;
 window.renderScorecard = function(rawName, d, isMp) {
   _origRenderScorecard(rawName, d, isMp);
   hookScorecardTooltips();
+  updateMapStatOverlay(d);
 };
 
 function hookScorecardTooltips() {
